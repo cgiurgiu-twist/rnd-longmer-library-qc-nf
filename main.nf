@@ -126,8 +126,12 @@ workflow {
                  MAKE_PLOTS.out.plots.collect(), ch_logo)
 }
 
-workflow.onComplete {
-    log.info(workflow.success
-        ? "Done. Outputs in ${params.outdir}\n  Read qc_summary.md first — it carries the denominators and bounds."
-        : "Failed: ${workflow.errorMessage}")
+workflow.onComplete = {
+    if (workflow.success) {
+        log.info "Done. Outputs in ${params.outdir}"
+        log.info "  Read reports/<name>_qc_summary.md first — it carries the denominators and bounds."
+    }
+    else {
+        log.info "Failed: ${workflow.errorMessage}"
+    }
 }

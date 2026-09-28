@@ -14,8 +14,14 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - name: Install Nextflow
+        # Pinned to the version this pipeline is validated on and that the Seqera
+        # preRunScript sets. Newer parsers reject syntax this one accepts.
+        env:
+          NXF_VER: 25.10.4
         run: curl -s https://get.nextflow.io | bash && sudo mv nextflow /usr/local/bin/
       - name: Stub run
+        env:
+          NXF_VER: 25.10.4
         run: nextflow run . -profile stub -stub --outdir results_stub
 
   end_to_end:
@@ -30,8 +36,14 @@ jobs:
       - name: Install tools
         run: pip install 'mappy==2.28' edlib cutadapt numpy matplotlib openpyxl python-docx
       - name: Install Nextflow
+        # Pinned to the version this pipeline is validated on and that the Seqera
+        # preRunScript sets. Newer parsers reject syntax this one accepts.
+        env:
+          NXF_VER: 25.10.4
         run: curl -s https://get.nextflow.io | bash && sudo mv nextflow /usr/local/bin/
       - name: Run
+        env:
+          NXF_VER: 25.10.4
         run: nextflow run . -profile local
       - name: Check the numbers have not moved
         # These are the validated slice values (docs/VALIDATION.md). A change here is a real
