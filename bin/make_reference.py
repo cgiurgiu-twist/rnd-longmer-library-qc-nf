@@ -28,11 +28,12 @@ def sha(s):
 def build(order_csvs, manifest_dir, writer_dir, out_dir, name):
     os.makedirs(out_dir, exist_ok=True)
     rows, problems = [], []
+    # Per-order record of what was actually checked. A check whose input directory is
+    # absent is recorded as skipped, never silently counted as passed.
+    checks = {}
     for f in order_csvs:
         order = None
-        man = {}
-        for pat in (f"{manifest_dir}/manifest_*_750mer_120perwell_x2.csv",):
-            pass
+        oligo_id = {}          # Oligo_ID -> construct; the writer files key on this, not Gene
         for r in csv.DictReader(open(f)):
             order = r["Order"]
             s = r["Full_Construct_DNA"]
@@ -47,27 +48,54 @@ def build(order_csvs, manifest_dir, writer_dir, out_dir, name):
                          "well_60perwell": r["Well_60perwell"], "length_nt": len(s),
                          "vh_len_nt": int(r["VH_len_nt"]), "intermediate_len_nt": INT_LEN,
                          "gc_pct": r["GC_pct"], "construct_dna": s})
+            oligo_id[r["Oligo_ID"]] = s
         # manifest cross-check: designed well assignment must agree
-        mf = f"{manifest_dir}/manifest_{order}_750mer_120perwell_x2.csv"
-        if os.path.exists(mf):
+        checks.setdefault(order, {})
+        mf = f"{manifest_dir}/manifest_{order}_750mer_120perwell_x2.csv" if manifest_dir else ""
+        if mf and os.path.exists(mf):
             m = {x["gene"]: x["well"] for x in csv.DictReader(open(mf)) if x["replicate"] == "R1"}
-            for r in rows:
-                if r["order"] == order and m.get(r["gene"]) not in (None, r["well"]):
-                    problems.append(f"{r['gene']}: well {r['well']} != manifest {m[r['gene']]}")
-        # writer cross-check: the sequence that was actually printed
-        wf = f"{writer_dir}/writer_MOP_{order}_750mer_plate.csv"
-        if os.path.exists(wf):
-            seq = {r["gene"]: r["construct_dna"] for r in rows if r["order"] == order}
             n_ok = n_bad = 0
+            for r in rows:
+                if r["order"] != order:
+                    continue
+                if m.get(r["gene"]) is None:
+                    continue
+                if m[r["gene"]] == r["well"]:
+                    n_ok += 1
+                else:
+                    n_bad += 1
+                    problems.append(f"{r['gene']}: well {r['well']} != manifest {m[r['gene']]}")
+            checks[order]["manifest_well_agreement"] = {"run": True, "file": os.path.basename(mf),
+                                                        "n_checked": n_ok + n_bad, "n_ok": n_ok, "n_mismatched": n_bad}
+        else:
+            checks[order]["manifest_well_agreement"] = {"run": False, "reason": "no manifest file supplied"}
+        # writer cross-check: the sequence that was actually printed
+        wf = f"{writer_dir}/writer_MOP_{order}_750mer_plate.csv" if writer_dir else ""
+        if wf and os.path.exists(wf):
+            n_ok = n_bad = n_unknown = 0
             for x in csv.DictReader(open(wf)):
-                base = x["Name"].rsplit("_R", 1)[0]
-                if base in seq:
-                    if seq[base] == x["sequence"].replace("8", "A"):
-                        n_ok += 1
-                    else:
-                        n_bad += 1
-                        problems.append(f"{base}: writer sequence differs from the design")
+                base = x["Name"].rsplit("_R", 1)[0]       # strip the _R1/_R2 replicate suffix
+                if base not in oligo_id:
+                    n_unknown += 1
+                    continue
+                # Writer files encode every A as 8; reverse that before comparing.
+                if oligo_id[base] == x["sequence"].replace("8", "A"):
+                    n_ok += 1
+                else:
+                    n_bad += 1
+                    problems.append(f"{base}: writer sequence differs from the design")
+            if n_unknown:
+                problems.append(f"{order}: {n_unknown} writer rows name an oligo that is not in the order file")
+            if n_ok + n_bad == 0:
+                problems.append(f"{order}: the writer file was read but matched no designed oligo — "
+                                f"the check did not actually run (name-field mismatch?)")
+            checks[order]["writer_sequence_identity"] = {
+                "run": True, "file": os.path.basename(wf), "n_checked": n_ok + n_bad,
+                "n_identical": n_ok, "n_mismatched": n_bad, "n_unrecognised_names": n_unknown,
+                "note": "writer files encode A as 8; that substitution is reversed before comparison"}
             print(f"  {order}: writer rows matching design {n_ok}, mismatching {n_bad}")
+        else:
+            checks[order]["writer_sequence_identity"] = {"run": False, "reason": "no writer file supplied"}
 
     # uniqueness of the half references, which is what the classifier relies on
     H, L = set(), set()
@@ -107,9 +135,10 @@ def build(order_csvs, manifest_dir, writer_dir, out_dir, name):
         "flank_5p": F5, "flank_3p": F3, "intermediate_len_nt": INT_LEN,
         "half_split_rule": "cut at 33 + vh_len_nt + intermediate_len_nt/2 (midpoint of the shared intermediate)",
         "reference_csv_sha256_12": sha(open(ref).read()),
-        "validation": {"checks_run": ["flanks", "declared length", "in-frame length", "manifest well agreement",
-                                      "writer-file sequence identity", "half-reference uniqueness"],
-                       "n_problems": len(problems), "problems": problems[:50]},
+        "validation": {
+            "always_run": ["flanks", "declared length", "in-frame length", "half-reference uniqueness"],
+            "per_order": checks,
+            "n_problems": len(problems), "problems": problems[:50]},
     }
     json.dump(manifest, open(f"{out_dir}/{name}_reference_manifest.json", "w"), indent=1)
     print(json.dumps({k: manifest[k] for k in ("n_constructs", "per_order", "wells_per_order", "frameworks", "length_nt")}, indent=1))

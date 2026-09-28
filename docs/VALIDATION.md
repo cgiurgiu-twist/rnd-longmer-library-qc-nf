@@ -27,8 +27,13 @@ two per sub-library) and the ~1,800 reads out of 152,000 scanned that map to it.
 | Intact full-length (both-primer), -008 | 93.0% | 92.5% |
 | Intact full-length (both-primer), -009 | 94.1% | 94.7% |
 
-Agreement is within what a few-hundred-read slice supports: the slice's binomial error on a
-6% deletion rate at n≈400 is about ±1.2 points, and every difference is inside that.
+Largest differences: pairing 0.53 pp (-008), deletion rate 0.65 pp (-007). Both are inside
+what a slice this small supports — on a 6% rate at n≈400 the binomial standard error is
+about 1.2 pp, so the 95% interval is roughly ±2.3 pp.
+
+The slice is 1,812 reads in total and -009 contributes only 364, so its "99.72% correctly
+paired" is a single mispaired read. Read this table as "the ported callers behave the same
+on the same reads", not as a precision measurement.
 
 ## What this does and does not establish
 
@@ -69,3 +74,26 @@ Expected, for the bundled fixtures:
 
 A change to the classifier, the half-split rule or the deletion caller that moves these is
 a real behaviour change and needs to be explained in the PR, not re-baselined silently.
+
+## Reference-builder verification (design side)
+
+`bin/make_reference.py` builds the reference CSV from the delivered order files and checks it
+against the MOP manifests and the writer files that went to the printer. On the Q-724749
+build (AILK014-007/-008/-009) it reports:
+
+| sub-library | manifest well agreement | writer rows identical to design |
+|---|---|---|
+| AILK014-007 | 22,391 / 22,391 | 44,782 / 44,782 |
+| AILK014-008 | 23,000 / 23,000 | 46,000 / 46,000 |
+| AILK014-009 | 22,798 / 22,798 | 45,596 / 45,596 |
+
+Writer files carry two replicate rows per oligo, hence ~2× the construct count, and encode
+every `A` as `8`; that substitution is reversed before comparison.
+
+The manifest records each check **per sub-library** with `run`, `n_checked`, `n_ok` /
+`n_identical`, `n_mismatched` and `n_unrecognised_names` — not a flat list of check names. A
+check whose input file is absent is recorded as `"run": false` with a reason, and a check that
+reads its file but matches **zero** designed oligos is recorded as a problem rather than a
+pass. That guard exists because an earlier version keyed the design lookup on `Gene` while the
+writer files key on `Oligo_ID`: it matched nothing, reported `n_checked: 0, n_mismatched: 0`,
+and read as a clean result. Zero mismatches out of zero comparisons is not evidence.
