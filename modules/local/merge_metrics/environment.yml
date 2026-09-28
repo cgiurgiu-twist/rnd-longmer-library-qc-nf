@@ -1,0 +1,6 @@
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # numpy is used only for the Poisson-thinning rarefaction; the merge runs without it.
+  - numpy=1.26

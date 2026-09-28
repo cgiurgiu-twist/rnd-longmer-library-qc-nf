@@ -1,0 +1,3 @@
+*.nf     linguist-language=Nextflow
+*.config linguist-language=Nextflow
+tests/fixtures/** linguist-vendored

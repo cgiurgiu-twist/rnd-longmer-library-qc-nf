@@ -1,0 +1,26 @@
+# Nextflow
+.nextflow*
+work/
+results/
+results_test/
+results_stub/
+*.log
+
+# Local/dev launch params (real S3 paths, dev-only)
+assets/*_params.yml
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Never commit credentials or full reference CSVs (tens of MB; they live in S3/Drive)
+*token*
+credentials*
+*_reference.csv
+!tests/fixtures/reference_slice.csv

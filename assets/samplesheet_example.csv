@@ -1,0 +1,4 @@
+sublibrary,fastq_dir
+AILK014-007,s3://twist-instrument-data/ngs/PromethION/20260924_1825_P2I-00342-B_260924_Q-724749_AILK0114-007/fastq_pass
+AILK014-008,s3://twist-instrument-data/ngs/PromethION/20260924_1824_P2I-00341-A_260924_Q-724749_AILK014-008/fastq_pass
+AILK014-009,s3://twist-instrument-data/ngs/PromethION/20260924_1824_P2I-00342-A_260924_Q-724749_AILK014-009/fastq_pass

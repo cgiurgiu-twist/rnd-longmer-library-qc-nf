@@ -1,0 +1,4 @@
+sublibrary,fastq_dir
+AILK014-007,__PROJDIR__/tests/fixtures/fastq/AILK014-007
+AILK014-008,__PROJDIR__/tests/fixtures/fastq/AILK014-008
+AILK014-009,__PROJDIR__/tests/fixtures/fastq/AILK014-009

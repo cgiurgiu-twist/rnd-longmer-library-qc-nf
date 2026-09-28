@@ -1,0 +1,15 @@
+reports:
+  "reports/*_qc_summary.md":
+    display: "QC summary (read this first)"
+  "reports/*_nanopore_QC.xlsx":
+    display: "QC workbook"
+  "reports/*_QC_Summary.docx":
+    display: "Customer QC collateral"
+  "metrics/controls.json":
+    display: "Classifier and deletion-caller calibration"
+  "reference/reference_qc.json":
+    display: "Reference validation"
+  "plots/fig02_composition.png":
+    display: "Read composition"
+  "plots/fig17a_readlen_all_linear.png":
+    display: "Read length distribution"

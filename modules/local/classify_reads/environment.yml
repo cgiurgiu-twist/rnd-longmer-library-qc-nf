@@ -1,0 +1,9 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # mappy is minimap2's Python binding — the classifier's only alignment dependency.
+  # Pinned: a different minimap2 recovers marginally different alignments, which moves
+  # the chimera rate in the 4th decimal place.
+  - python=3.11
+  - mappy=2.28
