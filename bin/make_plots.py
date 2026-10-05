@@ -86,13 +86,19 @@ def main():
                 for b, n in ext["rlen_hist_25bp_by_sublib_cls"].get(o + "|" + c, []): allh[b] += n
             xs = sorted(allh); ys = np.array([allh[x] for x in xs], float)
             ax[0].plot(xs, ys / ys.sum() * 100, color=OC[o], lw=1.4, label=f"{o} (clean+one-half+unmapped)")
-            ax[1].plot(h[:, 0], h[:, 1] / h[:, 1].sum() * 100, color=OC[o], lw=1.4, label=o)
+            span_h = np.array(SC.get("mol_len_hist_10nt_gene_by_sublib", {}).get(o, []), float)
+            if len(span_h):
+                ax[1].plot(span_h[:, 0] + 5, span_h[:, 1] / span_h[:, 1].sum() * 100, color=OC[o], lw=1.4, label=o)
+            else:
+                ax[1].plot(h[:, 0], h[:, 1] / h[:, 1].sum() * 100, color=OC[o], lw=1.4, label=o)
         for a in ax:
-            a.axvspan(LMIN, LMAX, color=GR, alpha=.12, zorder=0); a.set_xlabel("read length (nt, 25 nt bins)")
+            a.axvspan(LMIN, LMAX, color=GR, alpha=.12, zorder=0)
             a.set_ylabel("% of reads"); a.legend(fontsize=7, frameon=False)
+        ax[0].set_xlabel("raw read length (nt, 25 nt bins)")
+        ax[1].set_xlabel("primer-to-primer length (nt)")
         ax[0].set_xlim(0, 2000); ax[0].set_yscale("log")
-        ax[0].set_title("All reads (log scale) — concatamers near 1,400 nt", loc="left", color=DK)
-        ax[1].set_xlim(400, 900); ax[1].set_title(f"Correctly paired reads — design {LMIN}–{LMAX} nt shaded", loc="left", color=DK)
+        ax[0].set_title("All reads (log scale, raw length) — concatamers near 1,400 nt", loc="left", color=DK)
+        ax[1].set_xlim(400, 900); ax[1].set_title(f"Both-primer primer-span — design {LMIN}–{LMAX} nt shaded", loc="left", color=DK)
         save(fig, "fig01_read_length")
     except (KeyError, FileNotFoundError, IndexError, ValueError, TypeError) as e:
         SKIPPED.append('fig01' + ": " + type(e).__name__ + " " + str(e)); print("  SKIP fig01:", e)
@@ -405,18 +411,26 @@ def main():
 
     # ---- fig17 ----
     try:
-        # 17a: all reads, linear, millions (MGF-style)
-        h = np.array(ext["rlen_hist_25bp"], float)
-        def readlen_all(ax, title=True):
-            ax.bar(h[:, 0] + 12.5, h[:, 1] / 1e6, width=24, color=BL)
+        # 17a / customer collateral: primer-to-primer span, not raw FASTQ length.
+        # BLOCKDEL is a 1-in-N subsample; scale counts up so the axis stays in millions.
+        mol = SC.get("mol_len_hist_10nt") or []
+        if not mol:
+            raise KeyError("mol_len_hist_10nt")
+        h = np.array(mol, float)
+        sub = int(SC.get("subsample") or 8)
+        ys = h[:, 1] * sub / 1e6
+        def readlen_span(ax, title=True):
+            ax.bar(h[:, 0] + 5, ys, width=9, color=BL)
             ax.axvspan(LMIN, LMAX, color=GR, alpha=.18, zorder=0)
-            top = h[:, 1].max() / 1e6
+            top = float(ys.max()) if len(ys) else 1.0
             ax.annotate(f"designed window\n{LMIN}–{LMAX} bp", (LMAX, top * .95), xytext=(1050, top * .85), color=DK, fontsize=8,
                         arrowprops=dict(arrowstyle="-", color=DK, lw=.9))
-            ax.set_xlim(0, 2000); ax.set_xlabel("Read length (bp)"); ax.set_ylabel("Reads (millions)")
-            if title: ax.set_title(f"Read length distribution, all {core['total_reads']/1e6:.2f} M reads (25 bp bins; reads >2,000 bp in last bin)", loc="left", color=DK)
-        fig, ax = plt.subplots(figsize=(8, 3.2)); readlen_all(ax); save(fig, "fig17a_readlen_all_linear")
-        fig, ax = plt.subplots(figsize=(6.2, 2.4)); readlen_all(ax, title=False); save(fig, "collateral_readlen")
+            ax.set_xlim(0, 2000); ax.set_xlabel("Primer-to-primer length (bp)"); ax.set_ylabel("Reads (millions)")
+            if title:
+                n_span = (SC.get("primer_span") or {}).get("n_span") or int(h[:, 1].sum())
+                ax.set_title(f"Primer-to-primer length, both-primer reads (n≈{n_span * sub:,}; 10 nt bins; ONT adapters excluded)", loc="left", color=DK)
+        fig, ax = plt.subplots(figsize=(8, 3.2)); readlen_span(ax); save(fig, "fig17a_readlen_all_linear")
+        fig, ax = plt.subplots(figsize=(6.2, 2.4)); readlen_span(ax, title=False); save(fig, "collateral_readlen")
 
         # 17b: per sub-library, linear, 0-2000, stacked by class
         cols = {"clean_designed": GR, "one_half": "#9AA5B1", "unmapped": "#D8D8D8"}
