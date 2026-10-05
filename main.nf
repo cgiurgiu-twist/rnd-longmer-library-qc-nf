@@ -38,6 +38,8 @@ def helpMessage() {
                     One row per sub-library; fastq_dir is a folder of *.fastq.gz
                     (local or s3://). `sublibrary` must match the `order` column of
                     the reference.
+                    Launchpad alternative: --fastq_path plus --sublibrary (one
+                    sub-library per run, no samplesheet).
       --outdir      Output directory (local or s3://).
 
     Common options
@@ -57,7 +59,9 @@ workflow {
 
     if (params.help) { helpMessage(); return }
     if (!params.reference) { error "Missing --reference (design reference CSV). Run with --help." }
-    if (!params.input)     { error "Missing --input (samplesheet CSV: sublibrary,fastq_dir). Run with --help." }
+    if (!params.input && !(params.fastq_path && params.sublibrary)) {
+        error "Missing --input (samplesheet CSV: sublibrary,fastq_dir), or --fastq_path plus --sublibrary."
+    }
     if (!params.outdir)    { error "Missing --outdir." }
 
     ch_reference = Channel.fromPath(params.reference, checkIfExists: true).first()
@@ -66,22 +70,30 @@ workflow {
     // globbed into one channel so a file can always be traced back to its sub-library —
     // the flowcells are separate, and the cross-sub-library class is the false-positive
     // control, so a mislabelled shard would quietly corrupt that control.
-    ch_fastq = Channel
-        .fromPath(params.input, checkIfExists: true)
-        .splitCsv(header: true)
-        .map { row ->
-            if (!row.sublibrary || !row.fastq_dir) {
-                error "Samplesheet needs columns 'sublibrary' and 'fastq_dir'; got: ${row}"
+    def glob_fastqs = { sub, dir ->
+        def pattern = dir.endsWith('/') ? "${dir}${params.fastq_pattern}" : "${dir}/${params.fastq_pattern}"
+        def files = file(pattern)
+        if (!files) { error "No files matching ${pattern} for sub-library ${sub}" }
+        (files instanceof List ? files : [files]).collect { f -> tuple(sub, f) }
+    }
+
+    if (params.input) {
+        ch_fastq = Channel
+            .fromPath(params.input, checkIfExists: true)
+            .splitCsv(header: true)
+            .map { row ->
+                if (!row.sublibrary || !row.fastq_dir) {
+                    error "Samplesheet needs columns 'sublibrary' and 'fastq_dir'; got: ${row}"
+                }
+                // __PROJDIR__ lets the bundled test samplesheet work from any launch directory
+                tuple(row.sublibrary.trim(), row.fastq_dir.trim().replace('__PROJDIR__', "${projectDir}"))
             }
-            // __PROJDIR__ lets the bundled test samplesheet work from any launch directory
-            tuple(row.sublibrary.trim(), row.fastq_dir.trim().replace('__PROJDIR__', "${projectDir}"))
-        }
-        .flatMap { sub, dir ->
-            def pattern = dir.endsWith('/') ? "${dir}${params.fastq_pattern}" : "${dir}/${params.fastq_pattern}"
-            def files = file(pattern)
-            if (!files) { error "No files matching ${pattern} for sub-library ${sub}" }
-            (files instanceof List ? files : [files]).collect { f -> tuple(sub, f) }
-        }
+            .flatMap { sub, dir -> glob_fastqs(sub, dir) }
+    } else {
+        ch_fastq = Channel
+            .of(tuple(params.sublibrary.trim(), params.fastq_path.trim()))
+            .flatMap { sub, dir -> glob_fastqs(sub, dir) }
+    }
 
     BUILD_REFERENCE(ch_reference)
 

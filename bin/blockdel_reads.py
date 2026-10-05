@@ -8,7 +8,9 @@ before anything can be said about its middle, so:
 
   1. cutadapt with a linked adapter requiring both primers (--action=retain, so the read
      still spans the design). Reads that fail are end-truncated; they are profiled
-     separately rather than counted as deletions.
+     separately rather than counted as deletions. A second trim of the same linked pair
+     on the both-primer reads gives the primer-to-primer molecule length used for the
+     full-length 90% check (raw FASTQ length still includes ONT adapter/end-prep).
   2. minimap2 splice preset against the read's OWN assigned construct, never against an
      index of every construct — a pilot that took the best hit across all constructs
      called a gap in 13% of reads at 0.75 identity, because the splice model bridges a
@@ -125,6 +127,8 @@ def main():
 
     both, rest = f"{tmp}/both.fq", f"{tmp}/rest.fq"
     f_only, t_only = f"{tmp}/f.fq", f"{tmp}/t.fq"
+    span = {}
+    n_span_fail = 0
     if n:
         cutadapt(raw, both, ["--revcomp", "--untrimmed-output", rest,
                              "-a", f"{FWD};required...{TAIL};required"])
@@ -136,6 +140,16 @@ def main():
         for h, s in read_fq(rest):
             rid = h.split()[0]
             recs.append((h, s, "fwd_only" if rid in fset else ("tail_only" if rid in tset else "neither")))
+        # Second pass: trim (do not retain) the already-oriented both-primer reads so the
+        # leftover sequence is the interior between the two primer matches. Primer-span
+        # length is interior + both primer matches; ONT adapter/end-prep outside the
+        # primers is dropped. --revcomp is off because the retain pass already oriented.
+        both_trim = f"{tmp}/both_trim.fq"
+        subprocess.run(["cutadapt", "-e", "0.15", "-O", "18", "--quiet", "--discard-untrimmed",
+                        "-j", str(a.cpus), "-o", both_trim, "-a", f"{FWD}...{TAIL}", both],
+                       check=True)
+        for h, s in read_fq(both_trim):
+            span[h.split()[0]] = len(s) + len(FWD) + len(TAIL)
     else:
         recs = []
 
@@ -146,12 +160,21 @@ def main():
     gap_size, gap_start, gap_end = Counter(), Counter(), Counter()
     ngap = Counter()
     fl = Counter()
+    mol_hist, mol_hist_gene, mol_delta, raw_both = Counter(), Counter(), Counter(), Counter()
     idy_gap, idy_nogap = [], []
     events, confirmed, confirm_tot = [], 0, 0
     cache = {}
 
     for h, s, status in recs:
         ladder[status] += 1
+        rid = h.split()[0]
+        mol = span.get(rid) if status == "both" else None
+        if status == "both":
+            raw_both[min(len(s), 1200) // 10 * 10] += 1
+            if mol is None:
+                n_span_fail += 1
+            else:
+                mol_hist[min(mol, 1200) // 10 * 10] += 1
         flipped = h.rstrip().endswith("rc")
         vh, vl, _ = classify_seq(aln, s)
         cl = label(vh, vl, meta)
@@ -190,10 +213,16 @@ def main():
         # reasonable definitions of "full length" disagree by >10 points on the same reads
         # and the denominator has to be stated with the number. Alignment span straddles an
         # internal deletion, so it cannot see this defect at all — it is reported to show that.
+        # readlen_* uses primer-to-primer span (both primers required), not raw FASTQ length.
+        readlen_ok = mol is not None and mol >= 0.9 * full
         flags = {"aln_span_ge90": aln_len >= 0.9 * full,
-                 "readlen_ge90": len(s) >= 0.9 * full,
+                 "readlen_ge90": readlen_ok,
                  "no_gap50": mx < a.call_del,
-                 "readlen_and_nogap": len(s) >= 0.9 * full and mx < a.call_del}
+                 "readlen_and_nogap": readlen_ok and mx < a.call_del}
+        if mol is not None:
+            mol_hist_gene[min(mol, 1200) // 10 * 10] += 1
+            dlt = int(mol - full)
+            mol_delta[max(-200, min(200, dlt // 10 * 10))] += 1
         fl["den_gene_assigned"] += 1
         for k, ok in flags.items():
             if ok:
@@ -229,7 +258,7 @@ def main():
             except Exception:
                 pass
             if len(events) < a.max_events:
-                events.append((a.sublibrary, gene, st, ln, len(s), len(ref)))
+                events.append((a.sublibrary, gene, st, ln, len(s), mol if mol is not None else "", len(ref)))
         elif aln_len - gapsum > 0:
             idy_nogap.append(best.mlen / (aln_len - gapsum))
         fl["den_both_primer"] += 1
@@ -253,13 +282,19 @@ def main():
            "gap_size_hist_10nt": dict(gap_size), "gap_start_hist_10nt": dict(gap_start),
            "gap_end_hist_10nt": dict(gap_end), "n_gap_per_read": dict(ngap),
            "full_length": dict(fl),
+           "mol_len_hist_10nt": dict(mol_hist),
+           "mol_len_hist_10nt_gene": dict(mol_hist_gene),
+           "mol_minus_design_hist_10nt": dict(mol_delta),
+           "raw_len_hist_10nt_both": dict(raw_both),
+           "n_span": len(span), "n_span_fail": n_span_fail,
            "identity_median": {"gap50": med(idy_gap), "no_gap": med(idy_nogap)},
            "identity_n": {"gap50": len(idy_gap), "no_gap": len(idy_nogap)},
            "edlib_confirm": {"n": confirm_tot, "confirmed": confirmed},
-           "params": {"min_del": a.min_del, "call_del": a.call_del}}
+           "params": {"min_del": a.min_del, "call_del": a.call_del,
+                      "primer_fwd": len(FWD), "primer_tail": len(TAIL)}}
     json.dump(out, open(a.out, "w"))
     with open(a.events_out, "w") as fh:
-        fh.write("sublib\tgene\tgap_start\tgap_len\tqlen\treflen\n")
+        fh.write("sublib\tgene\tgap_start\tgap_len\tqlen\tmol_len\treflen\n")
         for e in events:
             fh.write("\t".join(map(str, e)) + "\n")
     shutil.rmtree(tmp, ignore_errors=True)

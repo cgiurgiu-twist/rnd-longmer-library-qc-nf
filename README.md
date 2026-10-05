@@ -37,7 +37,7 @@ for the Ops runbook and [docs/METHODS.md](docs/METHODS.md) for what each number 
 | **VH/VL pairing** | Each read is aligned once against a combined index of designed VH-side and VL-side half-references; a half is assigned only if its best hit beats the runner-up by ≥15 matching bases over ≥120 nt. Reads are then classed `clean_designed` / `within_well` / `cross_well` / `cross_sublib` / `one_half` / `unmapped`. |
 | **Internal block deletions** | Reads that still carry **both** primer sites are aligned with minimap2 splice preset against their **own** assigned construct; a single internal gap ≥50 nt is a call, cross-checked with a splice-model-free edlib alignment. |
 | **Uniformity and dropout** | Per-variant and per-well read counts from correctly paired reads: dropout, CV, Gini, 95/5, within-2×-median. |
-| **Full-length** | Four definitions against three denominators, because they disagree by >10 points on the same reads. |
+| **Full-length** | Four definitions against three denominators. Quoted intact rate is primer-to-primer span ≥90% of design **and** no ≥50 nt block deletion, among both-primer reads. |
 | **Screening depth** | Poisson recovery per sub-library from each variant's own abundance and its own deletion rate. |
 | **Calibration** | Classifier and deletion-caller controls are simulated from **this library's own constructs** on every run — a reference with more well-mates is a harder problem, so the operating point is re-measured rather than inherited. |
 
@@ -77,7 +77,8 @@ causes it cannot test.
 - Pairing percentages are shares of reads with **both halves assigned**, not of all reads.
 - Deletion rates are shares of reads carrying **both primer sites** and assigned to a
   variant, on a 1-in-N subsample (default 8).
-- Intact fractions are **upper bounds** (the caller cannot see deletions <50 nt or
+- Intact fractions use **primer-to-primer span** (ONT adapters excluded) among both-primer
+  reads, and are **upper bounds** (the caller cannot see deletions <50 nt or
   substitutions), so screening-depth cell counts are **minima**.
 - `cross_well` reads are largely ligation-fused molecules formed during sequencing library
   prep, not chimeric constructs — check the read-length-by-class sheet before quoting a

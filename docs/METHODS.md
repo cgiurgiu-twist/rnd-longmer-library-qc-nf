@@ -61,17 +61,21 @@ is not a caller — it produces false gaps at ≥3% read error — it is only a 
 ## Full length
 
 Four definitions, three denominators, because they disagree by more than 10 points on the
-same reads:
+same reads. **Length is the primer-to-primer span**, not the raw FASTQ length: a second
+cutadapt trim of the linked 5'/3' primers on both-primer reads drops ONT adapter/end-prep
+outside the construct. `mol_len = len(interior) + 22 + 22`. Concatamer diagnostics
+(≥1,200 nt) still use raw FASTQ length.
 
 | definition | what it misses |
 |---|---|
 | alignment span ≥90% of design | **straddles an internal deletion — cannot see this defect at all** |
-| read length ≥90% of design | tolerates the loss of up to ~68 nt on a 687 nt construct |
+| primer-span ≥90% of design | tolerates the loss of up to ~68 nt on a 687 nt construct; ignores ONT adapter |
 | no internal deletion ≥50 nt | says nothing about the ends |
-| read length ≥90% **and** no deletion ≥50 nt | the one we quote |
+| primer-span ≥90% **and** no deletion ≥50 nt | the one we quote |
 
 Quoted against reads that retain both primer sites — the only population in which an
-internal loss is scorable.
+internal loss is scorable. Primer-span is undefined without both primers, so
+`readlen_ge90` is false for truncated (one-primer) reads.
 
 ## Uniformity, dropout and screening depth
 

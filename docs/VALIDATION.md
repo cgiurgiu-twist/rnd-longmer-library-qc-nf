@@ -75,6 +75,12 @@ Expected, for the bundled fixtures:
 A change to the classifier, the half-split rule or the deletion caller that moves these is
 a real behaviour change and needs to be explained in the PR, not re-baselined silently.
 
+**Primer-span length (`primer-span-read-length`).** Quoted intact full-length now uses the
+primer-to-primer span after cutadapt, not raw FASTQ length. The numbers in the table above
+were measured with raw length (ONT adapters inflated reads by ~40–50 nt, so the 90% length
+gate barely filtered). Re-runs on this branch are expected to move the intact %; do not
+treat a drop toward the `no_gap50` rate as a regression in the deletion caller.
+
 ## Reference-builder verification (design side)
 
 `bin/make_reference.py` builds the reference CSV from the delivered order files and checks it

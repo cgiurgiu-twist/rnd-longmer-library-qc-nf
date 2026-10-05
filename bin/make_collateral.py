@@ -93,8 +93,8 @@ for i, (k, v) in enumerate(vals):
         c.paragraphs[0].paragraph_format.space_before = Pt(3); c.paragraphs[0].paragraph_format.space_after = Pt(3)
 rule("BFBFBF", 6)
 p = doc.add_paragraph(); r = p.add_run(
-    "Definitions. Full Length Fragments: reads ≥90% of designed length with no internal deletion ≥50 nt, among reads carrying both "
-    "primer sites. Pairing Chimera: reads whose VH and VL halves come from different designed variants (within-well, cross-well and "
+    "Definitions. Full Length Fragments: primer-to-primer span ≥90% of designed length with no internal deletion ≥50 nt, among reads carrying both "
+    "primer sites (ONT adapter/end-prep outside the primers is excluded). Pairing Chimera: reads whose VH and VL halves come from different designed variants (within-well, cross-well and "
     "cross-sub-library combined), as a share of reads with both halves assigned. 95th/5th Percentile: ratio of per-variant read counts. "
     f"Full-depth Oxford Nanopore sequencing, {core['total_reads']/1e6:.1f} M reads across the three sub-libraries.")
 r.font.size = Pt(8); r.font.color.rgb = RGBColor(0x59, 0x59, 0x59)

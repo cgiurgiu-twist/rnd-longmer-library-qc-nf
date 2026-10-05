@@ -256,8 +256,8 @@ def main():
     # ---- fig10 ----
     try:
         fl = SC["fl_matrix"]; defs = ["aln_span_ge90", "readlen_ge90", "no_gap50", "readlen_and_nogap"]
-        nm = {"aln_span_ge90": "alignment span ≥90%", "readlen_ge90": "read length ≥90%", "no_gap50": "no internal deletion ≥50 nt",
-              "readlen_and_nogap": "read length ≥90% AND no deletion"}
+        nm = {"aln_span_ge90": "alignment span ≥90%", "readlen_ge90": "primer-span length ≥90%", "no_gap50": "no internal deletion ≥50 nt",
+              "readlen_and_nogap": "primer-span ≥90% AND no deletion"}
         dens = ["gene_assigned", "both_primer", "clean_designed"]
         dn = {"gene_assigned": "gene-assigned reads", "both_primer": "both-primer reads", "clean_designed": "correctly paired reads"}
         fig, ax = plt.subplots(figsize=(9, 3.4)); w = .26
@@ -434,20 +434,37 @@ def main():
         fig.suptitle("Read length by sub-library and class (within-well / cross-well / cross-sub-library reads are <0.5% and not drawn)", color=DK, fontsize=9.5)
         save(fig, "fig17b_readlen_by_sublib")
 
-        # 17c: zoom 550-800, clean reads per sublib vs designed-length distribution
+        # 17c: zoom 400-900, primer-span vs designed-length distribution
         fig, axs = plt.subplots(1, 3, figsize=(12.5, 3.2), sharey=False)
+        by = SC.get("mol_len_hist_10nt_gene_by_sublib", {})
+        pspan = SC.get("primer_span_by_sublib", {})
         for a, o in zip(axs, ORD):
-            hh = np.array(ext["rlen_hist_25bp_by_sublib_cls"][o + "|clean_designed"], float)
-            sel = (hh[:, 0] >= 400) & (hh[:, 0] < 900)
-            a.bar(hh[sel, 0] + 12.5, hh[sel, 1] / hh[:, 1].sum() * 100, width=24, color=OC[o], alpha=.75, label="correctly paired reads")
             L = [m["full_len"] for m in _META.values() if m["order"] == o]
-            c = collections.Counter(int(x // 25 * 25) for x in L)
-            xs = np.arange(400, 900, 25)
-            a.plot(xs + 12.5, [c.get(int(x), 0) / len(L) * 100 for x in xs], "o-", color="k", lw=1.1, ms=3, label="designed constructs")
-            q = ext["rl_by_sublib_cls"][o + "|clean_designed"]
-            a.set_title(f"{o}: read median {q[1]} nt (design median {int(np.median(L))} nt)", loc="left", fontsize=8.5, color=OC[o])
-            a.set_xlabel("Read length (bp, 25 bp bins)"); a.set_ylabel("% of reads / % of designs"); a.set_xlim(400, 900); a.legend(fontsize=7, frameon=False, loc="upper left")
-        fig.suptitle("Zoom 400–900 bp: correctly paired reads vs designed construct lengths (reads carry ~20–40 nt of sequencing adapter/end-prep sequence)", color=DK, fontsize=9.5)
+            if o in by and by[o]:
+                hh = np.array(by[o], float)
+                sel = (hh[:, 0] >= 400) & (hh[:, 0] < 900)
+                tot = hh[:, 1].sum()
+                a.bar(hh[sel, 0] + 5, hh[sel, 1] / tot * 100, width=9, color=OC[o], alpha=.75,
+                      label="primer-span (both primers)")
+                c = collections.Counter(int(x // 10 * 10) for x in L)
+                xs = np.arange(400, 900, 10)
+                a.plot(xs + 5, [c.get(int(x), 0) / len(L) * 100 for x in xs], "o-", color="k", lw=1.1, ms=3,
+                       label="designed constructs")
+            else:
+                hh = np.array(ext["rlen_hist_25bp_by_sublib_cls"][o + "|clean_designed"], float)
+                sel = (hh[:, 0] >= 400) & (hh[:, 0] < 900)
+                a.bar(hh[sel, 0] + 12.5, hh[sel, 1] / hh[:, 1].sum() * 100, width=24, color=OC[o], alpha=.75,
+                      label="raw read length")
+                c = collections.Counter(int(x // 25 * 25) for x in L)
+                xs = np.arange(400, 900, 25)
+                a.plot(xs + 12.5, [c.get(int(x), 0) / len(L) * 100 for x in xs], "o-", color="k", lw=1.1, ms=3,
+                       label="designed constructs")
+            med = (pspan.get(o) or {}).get("median")
+            a.set_title(f"{o}: primer-span median {med} nt (design median {int(np.median(L))} nt)" if med
+                        else f"{o}: design median {int(np.median(L))} nt", loc="left", fontsize=8.5, color=OC[o])
+            a.set_xlabel("length (bp)"); a.set_ylabel("% of reads / % of designs"); a.set_xlim(400, 900)
+            a.legend(fontsize=7, frameon=False, loc="upper left")
+        fig.suptitle("Zoom 400–900 bp: primer-to-primer span vs designed construct length (ONT adapters outside the primers excluded)", color=DK, fontsize=9.5)
         save(fig, "fig17c_readlen_zoom_vs_design")
     except (KeyError, FileNotFoundError, IndexError, ValueError, TypeError) as e:
         SKIPPED.append("fig17: " + type(e).__name__ + " " + str(e)); print("  SKIP fig17:", e)

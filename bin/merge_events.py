@@ -23,7 +23,7 @@ for f in sorted(set(a.events)):
                 if j < a.max:
                     keep[j] = line
 with open(a.out, "w") as fh:
-    fh.write("sublib,gene,gap_start,gap_len,qlen,reflen\n")
+    fh.write("sublib,gene,gap_start,gap_len,qlen,mol_len,reflen\n")
     for l in keep:
         fh.write(",".join(l.rstrip("\n").split("\t")) + "\n")
 print(f"{n} events seen, {len(keep)} written to {a.out}")

@@ -87,9 +87,9 @@ def main():
                             "dropout_pct": round(100 * (len(meta) - len(per_gene)) / len(meta), 5),
                             "note": "read the rarefaction/depth figures before quoting as a point estimate"},
             "n_wells_observed": len(per_well)}
-    def binned_q(hist, qs=(0.05, 0.5, 0.95)):
-        """Quantiles from the 25 bp read-length histogram. Binned, so exact to +/-12 nt —
-        good enough for a length profile and it avoids keeping per-read lengths."""
+    def binned_q(hist, qs=(0.05, 0.5, 0.95), offset=12):
+        """Quantiles from a binned histogram. `offset` is the bin half-width used to
+        report the bin centre (12 for 25 bp bins, 5 for 10 nt bins)."""
         items = sorted(hist.items())
         tot = sum(v for _, v in items)
         if not tot:
@@ -99,7 +99,7 @@ def main():
             target = q * tot
             while i < len(items) and cum + items[i][1] < target:
                 cum += items[i][1]; i += 1
-            out.append(items[min(i, len(items) - 1)][0] + 12)
+            out.append(items[min(i, len(items) - 1)][0] + offset)
         return out
 
     rlen_cls = defaultdict(Counter)
@@ -175,6 +175,10 @@ def main():
         gs, gst, gen, ng = Counter(), Counter(), Counter(), Counter()
         idy = defaultdict(lambda: [0.0, 0]); conf = Counter(); nsub = 0; subsample = None
         ends = Counter()
+        mol, mol_sub = Counter(), defaultdict(Counter)
+        molg, molg_sub = Counter(), defaultdict(Counter)
+        delta, delta_sub = Counter(), defaultdict(Counter)
+        rawb = Counter(); n_span = n_span_fail = 0
         for f in sorted(set(a.blockdel)):
             d = json.load(open(f)); s = d["sublibrary"]; nsub += d["n_subsampled"]
             subsample = d["subsample"]
@@ -208,6 +212,15 @@ def main():
             conf["n"] += d["edlib_confirm"]["n"]; conf["ok"] += d["edlib_confirm"]["confirmed"]
             for k, v in d.get("endpoint_hists", {}).items():
                 ends[k] += v
+            for b, v in d.get("mol_len_hist_10nt", {}).items():
+                mol[int(b)] += v; mol_sub[s][int(b)] += v
+            for b, v in d.get("mol_len_hist_10nt_gene", {}).items():
+                molg[int(b)] += v; molg_sub[s][int(b)] += v
+            for b, v in d.get("mol_minus_design_hist_10nt", {}).items():
+                delta[int(b)] += v; delta_sub[s][int(b)] += v
+            for b, v in d.get("raw_len_hist_10nt_both", {}).items():
+                rawb[int(b)] += v
+            n_span += d.get("n_span", 0); n_span_fail += d.get("n_span_fail", 0)
         ladtot = sum(lad.values()) or 1
         bd = {"n_subsampled": nsub, "subsample": subsample,
               "primer_ladder": dict(lad),
@@ -257,6 +270,22 @@ def main():
                                                  for s in ("both", "fwd_only", "tail_only", "neither")},
               "cov_hist_10nt_clean_by_sublib": {s: sorted([int(k.split("_")[-1]), v] for k, v in fl_sub[s].items()
                                                           if k.startswith("covclean_hist_")) for s in fl_sub}}
+        def mol_stats(hist):
+            p5, med, p95 = binned_q(hist, offset=5)
+            return {"n": sum(hist.values()), "p5": p5, "median": med, "p95": p95,
+                    "basis": "10 nt binned, primer-to-primer span"}
+        dtot = sum(delta.values())
+        sc["primer_span"] = {
+            "n_span": n_span, "n_span_fail": n_span_fail,
+            "both_primer": mol_stats(mol), "gene_assigned": mol_stats(molg),
+            "pct_within_30nt_of_design": round(100 * sum(v for b, v in delta.items() if -30 <= b <= 30) / dtot, 3) if dtot else None,
+            "note": "length from 5' primer through 3' primer after cutadapt; ONT adapter/end-prep outside the primers is excluded"}
+        sc["primer_span_by_sublib"] = {s: mol_stats(h) for s, h in molg_sub.items() if h}
+        sc["mol_len_hist_10nt"] = sorted([k, v] for k, v in mol.items())
+        sc["mol_len_hist_10nt_gene"] = sorted([k, v] for k, v in molg.items())
+        sc["mol_len_hist_10nt_gene_by_sublib"] = {s: sorted([k, v] for k, v in h.items()) for s, h in molg_sub.items()}
+        sc["mol_minus_design_hist_10nt"] = sorted([k, v] for k, v in delta.items())
+        sc["raw_len_hist_10nt_both"] = sorted([k, v] for k, v in rawb.items())
         json.dump(bd, open(f"{a.outdir}/blockdel_summary.json", "w"), indent=1)
         json.dump(sc, open(f"{a.outdir}/blockdel_scope.json", "w"), indent=1)
         with open(f"{a.outdir}/blockdel_per_gene_all.csv", "w", newline="") as fh:

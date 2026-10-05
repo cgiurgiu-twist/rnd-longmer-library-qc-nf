@@ -54,7 +54,8 @@ for l in ["AILK014-007 / -008 / -009 — 750mer direct-print nanopore QC (Q-7247
           "Pairing pass: every read. Block-deletion / strand / full-length pass: every 8th read.", "",
           "DENOMINATORS:", "  *_pct_of_all       share of every read in fastq_pass",
           "  *_pct_of_assigned  share of reads with BOTH halves assigned (the pairing denominator)",
-          "  deletion rates     share of reads carrying BOTH primer sites and assigned to a variant (1-in-8 subsample)", "",
+          "  deletion rates     share of reads carrying BOTH primer sites and assigned to a variant (1-in-8 subsample)",
+          "  full-length length  primer-to-primer span after cutadapt (ONT adapters excluded); raw FASTQ length is still used for concatamer diagnostics", "",
           "BOUNDS: mosaic rate is a LOWER bound; intact fractions are UPPER bounds; screening-depth cell counts are MINIMA.",
           "Dropout is measured (rarefaction flat from 5% of depth), not a bound.", "",
           f"CONTROLS: 0 false chimeras in 300,000 simulated clean reads at 1–3% error (95% UB 0.006% per condition); 100% within-well swap detection.",
@@ -80,7 +81,7 @@ add("One half only, % of all", lambda o: ps[o]["one_half_pct_of_all"] if o else 
 add("Unmapped, % of all", lambda o: ps[o]["unmapped_pct_of_all"] if o else ov["unmapped_pct_of_all"])
 add("≥50 nt block deletion, % of both-primer reads", lambda o: DEL[o] if o else SC["blockdel50_pct_of_eligible"], "no spec today")
 add("≥50 nt block deletion, correctly paired both-primer reads", lambda o: BD["per_sublib"][o]["pct"] if o else BD["block_deletion"]["50"]["pct"], "comparable to AILK013 per-order figures")
-add("Intact (read ≥90% AND no deletion), both-primer, %", lambda o: SC["fl_readlen_nogap_by_sublib_both"][o] if o else SC["fl_matrix"]["readlen_and_nogap"]["both_primer"], "spec ≥60%")
+add("Intact (primer-span ≥90% AND no deletion), both-primer, %", lambda o: SC["fl_readlen_nogap_by_sublib_both"][o] if o else SC["fl_matrix"]["readlen_and_nogap"]["both_primer"], "spec ≥60%; length is primer-to-primer, not raw FASTQ")
 add("Variants designed", lambda o: U[o]["n_designed"] if o else U["ALL"]["n_designed"])
 add("Variant dropout", lambda o: U[o]["dropout"] if o else U["ALL"]["dropout"], "measured")
 add("Reads/variant median", lambda o: U[o]["median"] if o else U["ALL"]["median"])
@@ -109,6 +110,21 @@ sheet("Controls", ["Caller", "Control", "Condition", "n", "hits", "%", "95% UB i
       [12, 26, 22, 10, 8, 10, 14])
 sheet("Read_length_by_class", ["Class", "n", "median", "% 600–900 nt", "% ≥1,200 nt"],
       [[k, v["n"], v["median"], v["pct_single"], v["pct_fused"]] for k, v in ext["length_classes"].items()], [18, 14, 10, 14, 14])
+_fln = {"aln_span_ge90": "alignment span ≥90% of design",
+        "readlen_ge90": "primer-span length ≥90% of design",
+        "no_gap50": "no internal deletion ≥50 nt",
+        "readlen_and_nogap": "primer-span ≥90% AND no deletion ≥50 nt"}
+pspan, psub = SC.get("primer_span", {}), SC.get("primer_span_by_sublib", {})
+if pspan:
+    ga = pspan.get("gene_assigned", {})
+    prow = [["all gene-assigned both-primer", ga.get("n"), ga.get("median"), ga.get("p5"), ga.get("p95"),
+             pspan.get("pct_within_30nt_of_design"), pspan.get("n_span_fail")]]
+    for o in ORD:
+        d = psub.get(o, {})
+        prow.append([o, d.get("n"), d.get("median"), d.get("p5"), d.get("p95"), None, None])
+    sheet("Primer_span_length",
+          ["group", "n", "median nt", "p5", "p95", "% within 30 nt of design", "span trim failures"],
+          prow, [28, 12, 12, 8, 8, 22, 18])
 sheet("Block_deletion", ["Metric", "Value"],
       [["subsampled reads", SC["n_subsampled"]], ["both-primer %", SC["both_primer_pct"]], ["eligible (both primers, gene assigned)", SC["eligible_any_cls_n"]],
        ["≥50 nt calls", SC["blockdel50_n"]], ["rate %", SC["blockdel50_pct_of_eligible"]], ["median size nt", bd["size_median"]],
@@ -118,7 +134,7 @@ sheet("Block_deletion", ["Metric", "Value"],
       [[f"{o} per-well min/median/max %", fmt3(bd["per_well"].get(o, {}), "min", "median", "max")] for o in ORD] +
       [[f"{o} per-variant p5/median/p95 %", fmt3(bd["per_gene_spread"].get(o, {}), "p5", "median", "p95")] for o in ORD], [48, 30])
 sheet("Full_length_definitions", ["Definition (% full length)", "Gene-assigned reads", "Both-primer reads", "Correctly paired reads"],
-      [[k, v.get("gene_assigned"), v.get("both_primer"), v.get("clean_designed")] for k, v in SC["fl_matrix"].items()], [26, 16, 16, 16])
+      [[_fln.get(k, k), v.get("gene_assigned"), v.get("both_primer"), v.get("clean_designed")] for k, v in SC["fl_matrix"].items()], [40, 16, 16, 16])
 sheet("Screening_depth", ["Sub-library", "Target %", "Ignoring deletions", "Counting deletions", "Ratio", "Mass-weighted intact"],
       [[o, t, REC[o][t]["ignoring_deletions"], REC[o][t]["counting_deletions"], REC[o][t]["ratio"], round(REC[o]["mass_weighted_intact"], 4)] for o in ORD for t in ("90", "95", "99")], [14, 10, 18, 18, 8, 18])
 pg = {r["gene"]: int(r["n"]) for r in csv.DictReader(open(D + "per_gene.csv"))}
@@ -154,7 +170,7 @@ summary = [
     "| Within-well chimera (% of assigned) | " + " | ".join(f"{ps[o]['within_well_pct_of_assigned']:.4f}%" for o in ORD) + " |",
     "| Total mispairing, conservative | " + " | ".join(f"{tm[o]:.3f}%" for o in ORD) + " |",
     "| >=50 nt block deletion (both-primer reads) | " + " | ".join(f"{DEL[o]:.2f}%" if DEL[o] is not None else "n/a" for o in ORD) + " |",
-    "| Intact full-length (both-primer) | " + " | ".join(
+    "| Intact full-length (primer-span, both-primer) | " + " | ".join(
         (lambda v: f"{v:.1f}%" if v is not None else "n/a")(SC["fl_readlen_nogap_by_sublib_both"].get(o)) for o in ORD) + " |",
     "| Variant dropout | " + " | ".join(f"{U[o]['dropout']} / {U[o]['n_designed']:,}" for o in ORD) + " |",
     "| Reads per variant, CV | " + " | ".join(f"{U[o]['cv']:.3f}" for o in ORD) + " |",
@@ -165,7 +181,7 @@ summary = [
     "",
     "- Pairing percentages are shares of reads with **both halves assigned**, not of all reads.",
     f"- Deletion rates are shares of reads carrying **both primer sites** and assigned to a variant, on a 1-in-{BD['subsample']} subsample.",
-    "- Intact fractions are **upper bounds** (the caller cannot see deletions below 50 nt or substitutions); screening-depth cell counts are therefore **minima**.",
+    "- Intact fractions use **primer-to-primer span** (not raw FASTQ length) among reads carrying both primer sites, and are **upper bounds** (the caller cannot see deletions below 50 nt or substitutions); screening-depth cell counts are therefore **minima**.",
     "- Cross-well reads are largely ligation-fused molecules from sequencing prep, not chimeric constructs — see the read-length-by-class sheet before quoting the conservative total.",
     "",
     "## Calibration",

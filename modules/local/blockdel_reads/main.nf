@@ -34,6 +34,6 @@ process BLOCKDEL_READS {
     stub:
     """
     echo '{"sublibrary":"${sublibrary}","fastq":"${fastq.name}","subsample":8,"n_subsampled":0,"primer_ladder":{},"strand":{},"eligible":{},"calls":{},"per_gene":{},"gap_size_hist_10nt":{},"gap_start_hist_10nt":{},"gap_end_hist_10nt":{},"n_gap_per_read":{},"full_length":{},"identity_median":{"gap50":null,"no_gap":null},"identity_n":{"gap50":0,"no_gap":0},"edlib_confirm":{"n":0,"confirmed":0},"params":{}}' > ${sublibrary}.${fastq.simpleName}.blockdel.json
-    printf 'sublib\\tgene\\tgap_start\\tgap_len\\tqlen\\treflen\\n' > ${sublibrary}.${fastq.simpleName}.events.tsv
+    printf 'sublib\\tgene\\tgap_start\\tgap_len\\tqlen\\tmol_len\\treflen\\n' > ${sublibrary}.${fastq.simpleName}.events.tsv
     """
 }
